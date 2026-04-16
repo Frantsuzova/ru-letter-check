@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Проверка на русские буквы</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 16px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      padding: 12px;
+      font-size: 15px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .panel {
+      margin-top: 20px;
+      padding: 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    .result-ok {
+      color: green;
+      font-weight: bold;
+    }
+
+    .result-bad {
+      color: #b00020;
+      font-weight: bold;
+    }
+
+    .lines {
+      margin-top: 12px;
+      white-space: pre-wrap;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 300px;
+      overflow: auto;
+    }
+
+    button {
+      margin-top: 12px;
+      margin-right: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .muted {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Проверка текста на русские буквы</h1>
+
+  <textarea id="inputText" placeholder="Вставьте текст сюда"></textarea>
+
+  <div>
+    <button onclick="analyzeText()">Проверить</button>
+    <button onclick="clearAll()">Очистить</button>
+  </div>
+
+  <div class="panel">
+    <div id="summary" class="muted">Пока ничего не проверено.</div>
+    <div id="details" class="lines" style="display:none;"></div>
+  </div>
+
+  <script>
+    const cyrillicRegex = /[А-Яа-яЁё]/g;
+
+    function analyzeText() {
+      const text = document.getElementById("inputText").value;
+      const summary = document.getElementById("summary");
+      const details = document.getElementById("details");
+
+      const matches = text.match(cyrillicRegex) || [];
+      const hasRussian = matches.length > 0;
+
+      const lines = text.split(/\r?\n/);
+      const russianLines = [];
+
+      lines.forEach((line, index) => {
+        if (/[А-Яа-яЁё]/.test(line)) {
+          russianLines.push(`${index + 1}: ${line}`);
+        }
+      });
+
+      if (hasRussian) {
+        summary.innerHTML = `
+          <div class="result-bad">Русские буквы найдены</div>
+          <div>Количество русских букв: <strong>${matches.length}</strong></div>
+          <div>Строк с русскими буквами: <strong>${russianLines.length}</strong></div>
+        `;
+      } else {
+        summary.innerHTML = `
+          <div class="result-ok">Русские буквы не найдены</div>
+          <div>Количество русских букв: <strong>0</strong></div>
+        `;
+      }
+
+      if (russianLines.length > 0) {
+        details.style.display = "block";
+        details.textContent = russianLines.join("\n");
+      } else {
+        details.style.display = "none";
+        details.textContent = "";
+      }
+    }
+
+    function clearAll() {
+      document.getElementById("inputText").value = "";
+      document.getElementById("summary").innerHTML = `<span class="muted">Пока ничего не проверено.</span>`;
+      document.getElementById("details").style.display = "none";
+      document.getElementById("details").textContent = "";
+    }
+  </script>
+</body>
+</html>
