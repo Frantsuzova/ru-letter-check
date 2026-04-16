@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Проверка текстовых артефактов</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 16px 40px;
+      line-height: 1.45;
+      color: #222;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      border: 1px solid #dcdcdc;
+      border-radius: 10px;
+      padding: 18px;
+      background: #fafafa;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    .hint {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 240px;
+      resize: vertical;
+      box-sizing: border-box;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      background: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid #bbb;
+      background: white;
+      border-radius: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #f0f0f0;
+    }
+
+    .result {
+      margin-top: 14px;
+      border: 1px solid #e1e1e1;
+      border-radius: 8px;
+      background: white;
+      padding: 12px;
+      min-height: 120px;
+      white-space: pre-wrap;
+    }
+
+    .ok {
+      color: #0b7a28;
+      font-weight: 700;
+    }
+
+    .warn {
+      color: #a15c00;
+      font-weight: 700;
+    }
+
+    .bad {
+      color: #b00020;
+      font-weight: 700;
+    }
+
+    .section-title {
+      font-weight: 700;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+
+    .muted {
+      color: #666;
+    }
+
+    code {
+      background: #f3f3f3;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Проверка текстовых артефактов</h1>
+  <div class="subtitle">
+    Левая форма проверяет Unicode и скрытые символы. Правая форма проверяет общие текстовые эвристики.
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Unicode и скрытые символы</h2>
+      <div class="hint">
+        Проверка невидимых символов, специальных пробелов и проблем с расстановкой пробелов.
+      </div>
+
+      <textarea id="unicodeInput" placeholder="Вставьте текст сюда"></textarea>
+
+      <div class="actions">
+        <button onclick="analyzeUnicode()">Проверить Unicode-артефакты</button>
+        <button onclick="clearBox('unicodeInput', 'unicodeResult')">Очистить</button>
+      </div>
+
+      <div id="unicodeResult" class="result muted">Проверка еще не запускалась.</div>
+    </div>
+
+    <div class="card">
+      <h2>Общие текстовые эвристики</h2>
+      <div class="hint">
+        Проверка смешения алфавитов, повторов, клишированных маркеров, одинаковых начал предложений и слишком ровной длины предложений.
+      </div>
+
+      <textarea id="heuristicInput" placeholder="Вставьте текст сюда"></textarea>
+
+      <div class="actions">
+        <button onclick="analyzeHeuristics()">Проверить текстовые эвристики</button>
+        <button onclick="clearBox('heuristicInput', 'heuristicResult')">Очистить</button>
+      </div>
+
+      <div id="heuristicResult" class="result muted">Проверка еще не запускалась.</div>
+    </div>
+  </div>
+
+  <script>
+    function escapeHtml(str) {
+      return str
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function clearBox(textareaId, resultId) {
+      document.getElementById(textareaId).value = "";
+      document.getElementById(resultId).innerHTML = '<span class="muted">Проверка еще не запускалась.</span>';
+    }
+
+    function countMatches(text, regex) {
+      const matches = text.match(regex);
+      return matches ? matches.length : 0;
+    }
+
+    function getVisibleNameForChar(ch) {
+      const code = ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0");
+      const map = {
+        "\u00A0": "НЕРАЗРЫВНЫЙ ПРОБЕЛ",
+        "\u200B": "ZERO WIDTH SPACE",
+        "\u200C": "ZERO WIDTH NON-JOINER",
+        "\u200D": "ZERO WIDTH JOINER",
+        "\u2060": "WORD JOINER",
+        "\u00AD": "МЯГКИЙ ПЕРЕНОС",
+        "\uFEFF": "BOM / ZERO WIDTH NO-BREAK SPACE",
+        "\t": "ТАБУЛЯЦИЯ"
+      };
+      const label = map[ch] || "СПЕЦИАЛЬНЫЙ СИМВОЛ";
+      return `${label} (U+${code})`;
+    }
+
+    function collectSpecialCharacters(text) {
+      const charsToCheck = [
+        "\u00A0",
+        "\u200B",
+        "\u200C",
+        "\u200D",
+        "\u2060",
+        "\u00AD",
+        "\uFEFF",
+        "\t"
+      ];
+
+      const found = [];
+      for (const ch of charsToCheck) {
+        const count = text.split(ch).length - 1;
+        if (count > 0) {
+          found.push({ char: ch, count });
+        }
+      }
+      return found;
+    }
+
+    function analyzeUnicode() {
+      const text = document.getElementById("unicodeInput").value;
+      const out = document.getElementById("unicodeResult");
+
+      if (!text.trim()) {
+        out.innerHTML = '<span class="warn">Сначала вставьте текст.</span>';
+        return;
+      }
+
+      const special = collectSpecialCharacters(text);
+      const doubleSpaces = countMatches(text, / {2,}/g);
+      const spaceBeforePunct = countMatches(text, /\s+[,\.;:!?]/g);
+      const noSpaceAfterPunct = countMatches(text, /[,\.;:!?](?![\s"')\]]|$)/g);
+
+      const issues = [];
+
+      if (special.length > 0) {
+        issues.push("специальные символы");
+      }
+      if (doubleSpaces > 0) {
+        issues.push("двойные пробелы");
+      }
+      if (spaceBeforePunct > 0) {
+        issues.push("пробел перед пунктуацией");
+      }
+      if (noSpaceAfterPunct > 0) {
+        issues.push("нет пробела после пунктуации");
+      }
+
+      let html = "";
+
+      if (issues.length === 0) {
+        html += `<div class="ok">Явных Unicode-артефактов и проблем с пробелами не найдено.</div>`;
+      } else {
+        html += `<div class="bad">Найдены артефакты: ${issues.length} катег.</div>`;
+      }
+
+      html += `<div class="section-title">Сводка</div>`;
+      html += `Длина текста: <strong>${text.length}</strong> символов\n`;
+      html += `Двойные пробелы: <strong>${doubleSpaces}</strong>\n`;
+      html += `Пробел перед пунктуацией: <strong>${spaceBeforePunct}</strong>\n`;
+      html += `Нет пробела после пунктуации: <strong>${noSpaceAfterPunct}</strong>\n`;
+
+      html += `\n<div class="section-title">Специальные символы</div>`;
+      if (special.length === 0) {
+        html += `Не найдены`;
+      } else {
+        html += special
+          .map(item => `${getVisibleNameForChar(item.char)}: ${item.count}`)
+          .join("\n");
+      }
+
+      html += `\n\n<div class="section-title">Что смотреть</div>`;
+      html += `Невидимые символы часто появляются после копирования из PDF, браузера, мессенджеров или текстовых редакторов.\n`;
+      html += `Проблемы с пробелами сами по себе ничего не доказывают, но это полезные места для ручной чистки.`;
+
+      out.innerHTML = html;
+    }
+
+    function splitWords(text) {
+      return text
+        .toLowerCase()
+        .replace(/[\r\n]+/g, " ")
+        .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+    }
+
+    function topRepeatedBigrams(words, minCount = 3) {
+      const map = new Map();
+
+      for (let i = 0; i < words.length - 1; i++) {
+        const bigram = words[i] + " " + words[i + 1];
+        map.set(bigram, (map.get(bigram) || 0) + 1);
+      }
+
+      return [...map.entries()]
+        .filter(([, count]) => count >= minCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    }
+
+    function splitSentences(text) {
+      return text
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    function sentenceStarts(sentences) {
+      const starts = new Map();
+
+      for (const sentence of sentences) {
+        const words = splitWords(sentence).slice(0, 3);
+        if (words.length === 0) continue;
+        const start = words.join(" ");
+        starts.set(start, (starts.get(start) || 0) + 1);
+      }
+
+      return [...starts.entries()]
+        .filter(([, count]) => count >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    }
+
+    function stdDev(values) {
+      if (values.length === 0) return 0;
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      const variance = values.reduce((sum, x) => sum + (x - mean) ** 2, 0) / values.length;
+      return Math.sqrt(variance);
+    }
+
+    function analyzeHeuristics() {
+      const text = document.getElementById("heuristicInput").value;
+      const out = document.getElementById("heuristicResult");
+
+      if (!text.trim()) {
+        out.innerHTML = '<span class="warn">Сначала вставьте текст.</span>';
+        return;
+      }
+
+      const words = splitWords(text);
+      const sentences = splitSentences(text);
+
+      const hasLatin = /[A-Za-z]/.test(text);
+      const hasCyrillic = /[А-Яа-яЁё]/.test(text);
+      const mixedAlphabet = hasLatin && hasCyrillic;
+
+      const repeated = topRepeatedBigrams(words, 3);
+
+      const markers = [
+        "it should be noted",
+        "the results show that",
+        "overall",
+        "in conclusion",
+        "this study",
+        "the present study",
+        "thus",
+        "therefore",
+        "следует отметить",
+        "таким образом",
+        "в рамках данного",
+        "результаты показывают",
+        "настоящее исследование",
+        "в целом"
+      ];
+
+      const lower = text.toLowerCase();
+      const foundMarkers = markers.filter(m => lower.includes(m));
+
+      const starts = sentenceStarts(sentences);
+      const sentenceLengths = sentences.map(s => splitWords(s).length).filter(n => n > 0);
+      const sd = stdDev(sentenceLengths);
+      const avg = sentenceLengths.length
+        ? sentenceLengths.reduce((a, b) => a + b, 0) / sentenceLengths.length
+        : 0;
+
+      let smoothnessComment = "Явного сигнала нет";
+      let smoothnessClass = "ok";
+
+      if (sentenceLengths.length >= 5) {
+        if (sd < 4 && avg > 8) {
+          smoothnessComment = "Длина предложений подозрительно ровная";
+          smoothnessClass = "warn";
+        } else {
+          smoothnessComment = "Разброс длины предложений выглядит нормально";
+          smoothnessClass = "ok";
+        }
+      }
+
+      let score = 0;
+      if (mixedAlphabet) score += 1;
+      if (repeated.length > 0) score += 2;
+      if (foundMarkers.length >= 2) score += 2;
+      if (starts.length > 0) score += 1;
+      if (smoothnessClass === "warn") score += 1;
+
+      let labelClass = "ok";
+      let label = "Эвристических сигналов мало";
+
+      if (score >= 5) {
+        labelClass = "bad";
+        label = "Найдено много эвристических сигналов";
+      } else if (score >= 2) {
+        labelClass = "warn";
+        label = "Найдены некоторые эвристические сигналы";
+      }
+
+      let html = `<div class="${labelClass}">${label}</div>`;
+
+      html += `<div class="section-title">Сводка</div>`;
+      html += `Слов: <strong>${words.length}</strong>\n`;
+      html += `Предложений: <strong>${sentences.length}</strong>\n`;
+      html += `Смешение латиницы и кириллицы: <strong>${mixedAlphabet ? "да" : "нет"}</strong>\n`;
+      html += `Средняя длина предложения: <strong>${avg.toFixed(2)}</strong>\n`;
+      html += `Стандартное отклонение длины предложений: <strong>${sd.toFixed(2)}</strong>\n`;
+      html += `Комментарий по длине предложений: <span class="${smoothnessClass}">${smoothnessComment}</span>\n`;
+
+      html += `\n<div class="section-title">Повторяющиеся биграммы</div>`;
+      if (repeated.length === 0) {
+        html += `Выше порога ничего не найдено`;
+      } else {
+        html += repeated.map(([phrase, count]) => `"${escapeHtml(phrase)}": ${count}`).join("\n");
+      }
+
+      html += `\n\n<div class="section-title">Клише и маркеры</div>`;
+      if (foundMarkers.length === 0) {
+        html += `Не найдены`;
+      } else {
+        html += foundMarkers.map(m => `"${escapeHtml(m)}"`).join("\n");
+      }
+
+      html += `\n\n<div class="section-title">Повторяющиеся начала предложений</div>`;
+      if (starts.length === 0) {
+        html += `Выше порога ничего не найдено`;
+      } else {
+        html += starts.map(([start, count]) => `"${escapeHtml(start)}": ${count}`).join("\n");
+      }
+
+      html += `\n\n<div class="section-title">Интерпретация</div>`;
+      html += `Это только слабые эвристические сигналы. Они помогают находить подозрительные места или точки для ручной проверки, но не доказывают ИИ-генерацию.`;
+
+      out.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
